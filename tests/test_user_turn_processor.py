@@ -7,6 +7,7 @@
 import unittest
 
 from pipecat.frames.frames import (
+    InterimTranscriptionFrame,
     InterruptionFrame,
     ProposedUserStartedSpeakingFrame,
     ProposedUserStoppedSpeakingFrame,
@@ -165,6 +166,36 @@ class TestUserTurnProcessor(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(should_start)
         self.assertTrue(should_stop)
         self.assertFalse(timeout)
+
+    async def test_final_transcription_queued_behind_turn_starting_interim_is_kept(self):
+        user_turn_processor = UserTurnProcessor(
+            user_turn_strategies=UserTurnStrategies(
+                stop=[SpeechTimeoutUserTurnStopStrategy(user_speech_timeout=TRANSCRIPTION_TIMEOUT)],
+            ),
+            user_turn_stop_timeout=USER_TURN_STOP_TIMEOUT,
+        )
+
+        pipeline = Pipeline([user_turn_processor])
+
+        # VAD missed the speech, so the interim starts the turn. The final is
+        # already queued behind it when the turn start interrupts.
+        frames_to_send = [
+            InterimTranscriptionFrame(text="Next", user_id="", timestamp="now"),
+            TranscriptionFrame(text="Next Tuesday.", user_id="", timestamp="now"),
+            SleepFrame(sleep=TRANSCRIPTION_TIMEOUT + 0.05),
+        ]
+        expected_down_frames = [
+            InterimTranscriptionFrame,
+            UserStartedSpeakingFrame,
+            InterruptionFrame,
+            TranscriptionFrame,
+            UserStoppedSpeakingFrame,
+        ]
+        await run_test(
+            pipeline,
+            frames_to_send=frames_to_send,
+            expected_down_frames=expected_down_frames,
+        )
 
     async def test_proposal_is_resolved_once_with_an_aggregator_downstream(self):
         """Two resolvers in one pipeline must not decide the same turn twice.

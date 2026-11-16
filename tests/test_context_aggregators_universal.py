@@ -945,6 +945,53 @@ class TestLLMUserAggregator(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(stop_message.content, "Hello!")
         self.assertFalse(timeout)
 
+    async def test_final_transcription_queued_behind_turn_starting_interim_is_kept(self):
+        context = LLMContext()
+
+        user_aggregator = LLMUserAggregator(
+            context,
+            params=LLMUserAggregatorParams(
+                user_turn_strategies=UserTurnStrategies(
+                    stop=[
+                        SpeechTimeoutUserTurnStopStrategy(user_speech_timeout=TRANSCRIPTION_TIMEOUT)
+                    ],
+                ),
+                user_turn_stop_timeout=USER_TURN_STOP_TIMEOUT,
+            ),
+        )
+
+        stop_message = None
+        timeout = None
+        turn_stopped = asyncio.Event()
+
+        @user_aggregator.event_handler("on_user_turn_stopped")
+        async def on_user_turn_stopped(aggregator, strategy, message):
+            nonlocal stop_message
+            stop_message = message
+            turn_stopped.set()
+
+        @user_aggregator.event_handler("on_user_turn_stop_timeout")
+        async def on_user_turn_stop_timeout(aggregator):
+            nonlocal timeout
+            timeout = True
+            turn_stopped.set()
+
+        pipeline = Pipeline([EndAfterTurnStop(turn_stopped), user_aggregator])
+
+        # VAD missed the speech, so the interim starts the turn. The final is
+        # already queued behind it when the turn start interrupts.
+        frames_to_send = [
+            InterimTranscriptionFrame(text="Next", user_id="", timestamp="now"),
+            TranscriptionFrame(text="Next Tuesday.", user_id="", timestamp="now"),
+        ]
+        await run_test(
+            pipeline,
+            frames_to_send=frames_to_send,
+        )
+
+        self.assertFalse(timeout)
+        self.assertEqual(stop_message.content, "Next Tuesday.")
+
     async def test_user_mute_strategies(self):
         context = LLMContext()
 

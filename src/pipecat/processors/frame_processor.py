@@ -1045,10 +1045,19 @@ class FrameProcessor(BaseObject):
 
         await self._call_event_handler("on_after_push_frame", frame)
 
-    async def broadcast_interruption(self):
-        """Broadcast an `InterruptionFrame` both upstream and downstream."""
+    async def broadcast_interruption(self, *, keep_queued_frames: bool = False):
+        """Broadcast an `InterruptionFrame` both upstream and downstream.
+
+        Args:
+            keep_queued_frames: If True, frames waiting in this processor's own
+                queue are kept. Use it when this processor interrupts while it
+                handles user input, and the frames queued behind it are more
+                input for the same turn (for example, the final transcription
+                behind the interim that started the turn).
+        """
         logger.debug(f"{self}: broadcasting interruption")
-        self.__reset_process_task()
+        if not keep_queued_frames:
+            self.__reset_process_task()
         await self.stop_all_metrics()
         await self.broadcast_frame(InterruptionFrame)
 
