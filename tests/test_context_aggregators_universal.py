@@ -992,6 +992,42 @@ class TestLLMUserAggregator(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(timeout)
         self.assertEqual(stop_message.content, "Next Tuesday.")
 
+    async def test_llm_run_queued_behind_turn_starting_interim_is_still_dropped(self):
+        """A run queued behind the interim that starts the turn doesn't answer it."""
+        user_aggregator = LLMUserAggregator(
+            LLMContext(),
+            params=LLMUserAggregatorParams(
+                user_turn_strategies=UserTurnStrategies(
+                    stop=[
+                        SpeechTimeoutUserTurnStopStrategy(user_speech_timeout=TRANSCRIPTION_TIMEOUT)
+                    ],
+                ),
+                user_turn_stop_timeout=USER_TURN_STOP_TIMEOUT,
+            ),
+        )
+
+        # VAD missed the speech, so the interim starts the turn. Only the
+        # transcription queued behind it is input for the same turn.
+        frames_to_send = [
+            InterimTranscriptionFrame(text="Next", user_id="", timestamp="now"),
+            LLMRunFrame(),
+            TranscriptionFrame(text="Next Tuesday.", user_id="", timestamp="now"),
+            SleepFrame(sleep=USER_TURN_STOP_TIMEOUT + 0.1),
+        ]
+        down, _ = await run_test(
+            user_aggregator,
+            frames_to_send=frames_to_send,
+        )
+
+        contexts = [i for i, f in enumerate(down) if isinstance(f, LLMContextFrame)]
+        turn = next((i for i, f in enumerate(down) if isinstance(f, LLMContextUserTurnFrame)), None)
+        self.assertEqual(len(contexts), 1)
+        self.assertIsNotNone(turn)
+        self.assertGreater(contexts[0], turn)
+        self.assertIn(
+            {"role": "user", "content": "Next Tuesday."}, down[contexts[0]].context.messages
+        )
+
     async def test_user_mute_strategies(self):
         context = LLMContext()
 

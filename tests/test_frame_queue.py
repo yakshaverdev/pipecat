@@ -45,6 +45,18 @@ class TestFrameQueueInterruptibility(unittest.IsolatedAsyncioTestCase):
         self.assertIs(queue.get_nowait(), plain)
         self.assertFalse(queue.has_uninterruptible)
 
+    def test_reset_keeps_the_given_frame_types(self):
+        queue = FrameQueue()
+        kept, dropped = TextFrame(text="hi"), EndFrame()
+        dropped.interruptible = True
+        queue.put_nowait(kept)
+        queue.put_nowait(dropped)
+
+        queue.reset(keep=(TextFrame,))
+
+        self.assertEqual(queue.qsize(), 1)
+        self.assertIs(queue.get_nowait(), kept)
+
     def test_has_frame_and_tuple_items(self):
         queue = FrameQueue(frame_getter=lambda item: item[0])
         queue.put_nowait((TextFrame(text="hi"), "down"))

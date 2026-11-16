@@ -1045,19 +1045,17 @@ class FrameProcessor(BaseObject):
 
         await self._call_event_handler("on_after_push_frame", frame)
 
-    async def broadcast_interruption(self, *, keep_queued_frames: bool = False):
+    async def broadcast_interruption(self, *, keep: tuple[type[Frame], ...] = ()):
         """Broadcast an `InterruptionFrame` both upstream and downstream.
 
         Args:
-            keep_queued_frames: If True, frames waiting in this processor's own
-                queue are kept. Use it when this processor interrupts while it
-                handles user input, and the frames queued behind it are more
-                input for the same turn (for example, the final transcription
-                behind the interim that started the turn).
+            keep: Frame types to keep in this processor's queue. Use it when
+                this processor interrupts while it handles user input, and the
+                frames of these types queued behind it are more input for the
+                same turn.
         """
         logger.debug(f"{self}: broadcasting interruption")
-        if not keep_queued_frames:
-            self.__reset_process_task()
+        self.__reset_process_task(keep=keep)
         await self.stop_all_metrics()
         await self.broadcast_frame(InterruptionFrame)
 
@@ -1303,18 +1301,18 @@ class FrameProcessor(BaseObject):
             self.__reset_process_task()
             self.__process_frame_task = self.create_task(self.__process_frame_task_handler())
 
-    def __reset_process_task(self):
+    def __reset_process_task(self, keep: tuple[type[Frame], ...] = ()):
         """Reset non-system frame processing task."""
         if self._enable_direct_mode:
             return
 
         self.__should_block_frames = False
         self.__process_event = asyncio.Event()
-        self.__reset_process_queue()
+        self.__reset_process_queue(keep=keep)
 
-    def __reset_process_queue(self):
+    def __reset_process_queue(self, keep: tuple[type[Frame], ...] = ()):
         """Reset non-system frame processing queue."""
-        self.__process_queue.reset()
+        self.__process_queue.reset(keep=keep)
 
     def has_queued_frame(self, frame_type: type[Frame]) -> bool:
         """Return True if a frame of the given type is waiting in the processing queue.

@@ -20,8 +20,8 @@ class FrameQueue(asyncio.Queue):
     code can decide whether to cancel a task or merely drain the interruptible
     items, and with ``reset()``, which does that draining: it removes every
     interruptible item and keeps the uninterruptible ones
-    (``Frame.interruptible`` False) in place. Both read the frames' flags as
-    they are at that moment.
+    (``Frame.interruptible`` False) in place, along with frames of the types
+    asked for. Both read the frames' flags as they are at that moment.
 
     Items may be raw ``Frame`` objects or tuples whose first element is a
     ``Frame`` (e.g. ``(frame, direction, callback)``).  Pass a ``frame_getter``
@@ -71,12 +71,17 @@ class FrameQueue(asyncio.Queue):
             for item in self._queue  # pyright: ignore[reportAttributeAccessIssue]
         )
 
-    def reset(self) -> None:
-        """Remove all interruptible items, keeping uninterruptible ones."""
+    def reset(self, keep: tuple[type[Frame], ...] = ()) -> None:
+        """Remove all interruptible items, keeping uninterruptible ones.
+
+        Args:
+            keep: Frame types to keep in the queue as well, for frames that are
+                more input for what is being interrupted.
+        """
         kept = []
         while not self.empty():
             item = self.get_nowait()
-            if self._is_uninterruptible(item):
+            if self._is_uninterruptible(item) or self._is_kept(item, keep):
                 kept.append(item)
             self.task_done()
         for item in kept:
@@ -85,6 +90,10 @@ class FrameQueue(asyncio.Queue):
     def _is_uninterruptible(self, item: Any) -> bool:
         frame = self._frame_getter(item)
         return frame is not None and not frame.interruptible
+
+    def _is_kept(self, item: Any, keep: tuple[type[Frame], ...]) -> bool:
+        frame = self._frame_getter(item)
+        return frame is not None and isinstance(frame, keep)
 
 
 class FramePriorityQueue(FrameQueue, asyncio.PriorityQueue):

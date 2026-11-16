@@ -12,9 +12,11 @@ from pipecat.frames.frames import (
     CancelFrame,
     EndFrame,
     Frame,
+    InterimTranscriptionFrame,
     ProposedUserStartedSpeakingFrame,
     ProposedUserStoppedSpeakingFrame,
     StartFrame,
+    TranscriptionFrame,
     UserStartedSpeakingFrame,
     UserStoppedSpeakingFrame,
     UserTurnResponseCancelFrame,
@@ -242,7 +244,7 @@ class UserTurnProcessor(FrameProcessor):
         await self._user_idle_controller.process_frame(UserStartedSpeakingFrame())
 
         if params.enable_interruptions:
-            await self.broadcast_interruption(keep_queued_frames=True)
+            await self.broadcast_interruption(keep=(TranscriptionFrame, InterimTranscriptionFrame))
 
         await self._call_event_handler("on_user_turn_started", strategy)
 

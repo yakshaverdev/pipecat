@@ -1503,7 +1503,7 @@ class LLMUserAggregator(LLMContextAggregator):
         # is void. An interruption stops it wherever it got to. A turn that
         # doesn't interrupt the bot only withdraws a speculation.
         if params.enable_interruptions:
-            await self.broadcast_interruption(keep_queued_frames=True)
+            await self.broadcast_interruption()
             # An answer ran only if the turn's words were written for it.
             self._user_turn_answer_voided = bool(self._full_user_turn_aggregation)
         else:
@@ -1554,7 +1554,7 @@ class LLMUserAggregator(LLMContextAggregator):
         await self._user_idle_controller.process_frame(UserStartedSpeakingFrame())
 
         if params.enable_interruptions:
-            await self.broadcast_interruption(keep_queued_frames=True)
+            await self.broadcast_interruption(keep=(TranscriptionFrame, InterimTranscriptionFrame))
 
         await self._call_event_handler("on_user_turn_started", strategy)
 
